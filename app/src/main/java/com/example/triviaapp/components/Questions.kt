@@ -6,11 +6,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.CircularProgressIndicator
-import androidx.compose.material.Surface
-import androidx.compose.material.Text
+import androidx.compose.material.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,12 +34,23 @@ import com.example.triviaapp.utils.AppColors
 fun Questions(viewModel: QuestionsViewModel) {
 
     val questions = viewModel.data.value.data?.toMutableList()
+
+    val questionIndex = remember {
+        mutableStateOf(1)
+    }
+
     if (viewModel.data.value.loading == true) {
         CircularProgressIndicator()
     } else {
-        Log.d("Loading", "Questions: Loading STOPPED")
-        questions?.forEach { questionItem ->
-            Log.d("Result", "Questions: ${questionItem.question}")
+        val question = try {
+            questions?.get(questionIndex.value)
+        }catch (ex: Exception) {
+            null
+        }
+        if (questions != null) {
+            QuestionDisplay(question = question!!, questionIndex, viewModel) {
+                questionIndex.value += 1
+            }
         }
     }
 }
@@ -49,27 +59,42 @@ fun Questions(viewModel: QuestionsViewModel) {
 fun QuestionDisplay( question: QuestionItem,
                      questionIndex: MutableState<Int>,
                      viewModel: QuestionsViewModel,
-                     onNextClicked: (Int) -> Unit
+                     onNextClicked: (Int) -> Unit = {}
     ) {
     val choicesState = remember(question) {
         question.choices.toMutableList()
     }
+
+    val answerState = remember(question) {
+        mutableStateOf<Int?>(null)
+    }
+
+    val correctAnswerState = remember(question) {
+        mutableStateOf<Boolean?>(null)
+    }
+
+    val updateAnswer: (Int) -> Unit = remember(question) {
+        {
+            answerState.value = it
+            correctAnswerState.value = choicesState[it] == question.answer
+        }
+    }
+
     val pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f,10f), 0f)
 
     Surface(modifier = Modifier
         .fillMaxWidth()
-        .fillMaxHeight()
-        .padding(4.dp),
+        .fillMaxHeight(),
             color = AppColors.mDarkPurple) {
 
         Column(modifier = Modifier.padding(12.dp),
                verticalArrangement = Arrangement.Top,
                horizontalAlignment = Alignment.Start) {
-            QuestionTracker()
+            QuestionTracker(counter = questionIndex.value, outOf = viewModel.data.value.data?.size!!)
             DrawDottedLine(pathEffect)
             
             Column {
-                Text(text = "What's the meaning of all this?",
+                Text(text = question.question,
                 modifier = Modifier
                     .padding(6.dp)
                     .align(alignment = Alignment.Start)
@@ -86,17 +111,72 @@ fun QuestionDisplay( question: QuestionItem,
                     .padding(3.dp)
                     .fillMaxWidth()
                     .height(45.dp)
-                    .border(width = 4.dp, brush = Brush.linearGradient(
-                        colors = listOf(AppColors.mOffDarkPurple, AppColors.mOffDarkPurple)),
-                        shape = RoundedCornerShape(15.dp))
-                    .clip(RoundedCornerShape(topStartPercent = 50,
-                    topEndPercent = 50,
-                    bottomEndPercent = 50,
-                    bottomStartPercent = 50))
-                    .background(Color.Transparent)) {
+                    .border(
+                        width = 4.dp, brush = Brush.linearGradient(
+                            colors = listOf(AppColors.mOffDarkPurple, AppColors.mOffDarkPurple)
+                        ),
+                        shape = RoundedCornerShape(15.dp)
+                    )
+                    .clip(
+                        RoundedCornerShape(
+                            topStartPercent = 50,
+                            topEndPercent = 50,
+                            bottomEndPercent = 50,
+                            bottomStartPercent = 50
+                        )
+                    )
+                    .background(Color.Transparent),
+                    verticalAlignment = Alignment.CenterVertically) {
+
+                    RadioButton(selected = (answerState.value == index),
+                        onClick = {
+                            updateAnswer(index)
+                        },
+                        modifier = Modifier.padding(start = 16.dp),
+                        colors = RadioButtonDefaults.colors(
+                            selectedColor = if (correctAnswerState.value == true && index == answerState.value) {
+                                Color.Green.copy(alpha = 0.2f)
+                            } else {
+                                Color.Red.copy(alpha = 0.2f)
+                            }
+                        ))
+                    val annotatedString = buildAnnotatedString {
+                        withStyle(style = SpanStyle(
+                            fontWeight = FontWeight.Bold,
+                            color = if (correctAnswerState.value == true && index == answerState.value) {
+                                Color.Green.copy(alpha = 0.2f)
+                            } else if (correctAnswerState.value == false && index == answerState.value){
+                                Color.Red.copy(alpha = 0.2f)
+                            } else {
+                                AppColors.mOffWhite
+                            },
+                            fontSize = 17.sp
+                        )) {
+                            append(answerText)
+                        }
+                    }
+                    
+                    Text(text = annotatedString, modifier = Modifier.padding(6.dp))
 
                 }
 
+            }
+            Button(
+                onClick = { onNextClicked(questionIndex.value) },
+                modifier = Modifier
+                    .padding(3.dp)
+                    .align(alignment = Alignment.CenterHorizontally),
+                shape = RoundedCornerShape(34.dp),
+                colors = ButtonDefaults.buttonColors(backgroundColor = AppColors.mLightBlue)
+            ) {
+
+                Text(
+                    text = "Next",
+                    modifier = Modifier.padding(4.dp),
+                    color = AppColors.mOffWhite,
+                    fontSize = 17.sp
+                )
+                
             }
         }
 
@@ -114,6 +194,31 @@ fun DrawDottedLine(pathEffect: PathEffect) {
         pathEffect = pathEffect)
     }
 
+}
+
+@Composable
+fun ShowProgress(score: Int = 12) {
+    Row(
+        modifier = Modifier
+            .padding(3.dp)
+            .fillMaxWidth()
+            .height(45.dp)
+            .border(
+                width = 4.dp,
+                brush = Brush.linearGradient(
+                    colors = listOf(AppColors.mLightPurple, AppColors.mLightPurple)
+                ),
+                shape = RoundedCornerShape(34.dp))
+            .clip(RoundedCornerShape(
+                topStartPercent = 50,
+                topEndPercent = 50,
+                bottomStartPercent = 50,
+                bottomEndPercent = 50))
+            .background(Color.Transparent),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        
+    }
 }
 
 @Composable
